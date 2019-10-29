@@ -36,6 +36,7 @@ enum SoftwareSerialConfig {
     SWSERIAL_6N1,
     SWSERIAL_7N1,
     SWSERIAL_8N1,
+    SWSERIAL_9N1,
 };
 
 /// This class is compatible with the corresponding AVR one, however,
@@ -44,7 +45,7 @@ enum SoftwareSerialConfig {
 /// Instead, the begin() function handles pin assignments and logic inversion.
 /// It also has optional input buffer capacity arguments for byte buffer and ISR bit buffer.
 /// Bitrates up to at least 115200 can be used.
-class SoftwareSerial : public Stream {
+class SoftwareSerial {
 public:
     SoftwareSerial();
     SoftwareSerial(const SoftwareSerial&) = delete;
@@ -61,25 +62,25 @@ public:
 
     bool overflow();
 
-    int available() override;
+    int available() ;
     int availableForWrite() {
         if (!m_txValid) return 0;
         return 1;
     }
-    int peek() override;
-    int read() override;
+    int peek() ;
+    int read() ;
     /// The readBytes functions are non-waiting, there is no timeout.
-    size_t readBytes(uint8_t* buffer, size_t size) override;
+    size_t readBytes(uint16_t* buffer, size_t size) ;
     /// The readBytes functions are non-waiting, there is no timeout.
-    size_t readBytes(char* buffer, size_t size) override {
-        return readBytes(reinterpret_cast<uint8_t*>(buffer), size);
+    size_t readBytes(char* buffer, size_t size)  {
+        return readBytes(reinterpret_cast<uint16_t*>(buffer), size);
     }
-    void flush() override;
-    size_t write(uint8_t byte) override;
-    size_t write(const uint8_t* buffer, size_t size) override;
-    size_t write(const char* buffer, size_t size) {
-        return write(reinterpret_cast<const uint8_t*>(buffer), size);
-    }
+    void flush() ;
+    size_t write(uint16_t byte) ;
+    size_t write(const uint16_t* buffer, size_t size) ;
+    // size_t write(const char* buffer, size_t size) {
+    //     return write(reinterpret_cast<const uint8_t*>(buffer), size);
+    // }
     operator bool() const { return m_rxValid || m_txValid; }
 
     /// Disable or enable interrupts on the rx pin.
@@ -100,7 +101,7 @@ public:
     /// from loop, or otherwise scheduled.
     void perform_work();
 
-    using Print::write;
+    // using Print::write;
 
 private:
     // If asyn, it's legal to exceed the deadline, for instance,
@@ -129,20 +130,20 @@ private:
     bool m_txEnableValid = false;
     bool m_invert;
     bool m_overflow = false;
-    uint8_t m_dataBits;
+    uint8_t m_dataBits; // How many bits are in the data frame? See: SoftwareSerialConfig.
     uint32_t m_bit_us;
     uint32_t m_bitCycles;
     uint32_t m_periodStart;
     uint32_t m_periodDuration;
     bool m_intTxEnabled;
-    std::unique_ptr<circular_queue<uint8_t> > m_buffer;
+    std::unique_ptr<circular_queue<uint16_t> > m_buffer;
     // the ISR stores the relative bit times in the buffer. The inversion corrected level is used as sign bit (2's complement):
     // 1 = positive including 0, 0 = negative.
     std::unique_ptr<circular_queue<uint32_t> > m_isrBuffer;
     std::atomic<bool> m_isrOverflow;
     uint32_t m_isrLastCycle;
-    int8_t m_rxCurBit; // 0 - 7: data bits. -1: start bit. 8: stop bit.
-    uint8_t m_rxCurByte = 0;
+    int16_t m_rxCurBit; // Some kind of counter? // 0 - 7: data bits. -1: start bit. 8: stop bit.
+    uint16_t m_rxCurByte = 0;
 
     std::function<void(int available)> receiveHandler;
 };

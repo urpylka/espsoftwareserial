@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 */
 
-#include <SoftwareSerial.h>
+#include "SoftwareSerial.h"
 #include <Arduino.h>
 
 #ifdef ESP32
@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define xt_wsr_ps(a)
 #endif
 
-constexpr uint8_t BYTE_ALL_BITS_SET = ~static_cast<uint8_t>(0);
+constexpr uint16_t BYTE_ALL_BITS_SET = ~static_cast<uint16_t>(0);
 
 SoftwareSerial::SoftwareSerial() {
     m_isrOverflow = false;
@@ -55,7 +55,7 @@ void SoftwareSerial::begin(uint32_t baud, int8_t rxPin, int8_t txPin,
     m_invert = invert;
     if (isValidGPIOpin(rxPin)) {
         m_rxPin = rxPin;
-        std::unique_ptr<circular_queue<uint8_t> > buffer(new circular_queue<uint8_t>((bufCapacity > 0) ? bufCapacity : 64));
+        std::unique_ptr<circular_queue<uint16_t> > buffer(new circular_queue<uint16_t>((bufCapacity > 0) ? bufCapacity : 64));
         m_buffer = move(buffer);
         std::unique_ptr<circular_queue<uint32_t> > isrBuffer(new circular_queue<uint32_t>((isrBufCapacity > 0) ? isrBufCapacity : (sizeof(uint8_t) * 8 + 2) * bufCapacity));
         m_isrBuffer = move(isrBuffer);
@@ -137,7 +137,7 @@ void SoftwareSerial::enableRx(bool on) {
             m_rxCurBit = m_dataBits;
             // Init to stop bit level and current cycle
             m_isrLastCycle = (ESP.getCycleCount() | 1) ^ m_invert;
-            attachInterruptArg(digitalPinToInterrupt(m_rxPin), reinterpret_cast<void (*)(void*)>(rxBitISR), this, CHANGE);
+            attachInterruptArg(digitalPinToInterrupt(m_rxPin), (void (*)())(rxBitISR), this, CHANGE);
         }
         else {
             detachInterrupt(digitalPinToInterrupt(m_rxPin));
@@ -155,7 +155,7 @@ int SoftwareSerial::read() {
     return m_buffer->pop();
 }
 
-size_t SoftwareSerial::readBytes(uint8_t * buffer, size_t size) {
+size_t SoftwareSerial::readBytes(uint16_t * buffer, size_t size) {
     if (!m_rxValid) { return -1; }
     if (0 != (size = m_buffer->pop_n(buffer, size))) return size;
     rxBits();
@@ -213,11 +213,11 @@ void ICACHE_RAM_ATTR SoftwareSerial::writePeriod(
     }
 }
 
-size_t SoftwareSerial::write(uint8_t b) {
+size_t SoftwareSerial::write(uint16_t b) {
     return write(&b, 1);
 }
 
-size_t ICACHE_RAM_ATTR SoftwareSerial::write(const uint8_t * buffer, size_t size) {
+size_t ICACHE_RAM_ATTR SoftwareSerial::write(const uint16_t * buffer, size_t size) {
     if (m_rxValid) { rxBits(); }
     if (!m_txValid) { return -1; }
 
@@ -237,6 +237,7 @@ size_t ICACHE_RAM_ATTR SoftwareSerial::write(const uint8_t * buffer, size_t size
     m_periodStart = ESP.getCycleCount();
     m_periodDuration = 0;
     const uint32_t dataMask = ((1UL << m_dataBits) - 1);
+
     for (size_t cnt = 0; cnt < size; ++cnt, ++buffer) {
         bool withStopBit = true;
         // push LSB start-data-stop bit pattern into uint32_t
@@ -328,7 +329,7 @@ void SoftwareSerial::rxBits(const uint32_t & isrCycle) {
     int32_t cycles = isrCycle - m_isrLastCycle;
     m_isrLastCycle = isrCycle;
 
-    uint8_t bits = cycles / m_bitCycles;
+    uint16_t bits = cycles / m_bitCycles;
     if (cycles % m_bitCycles > (m_bitCycles >> 1)) ++bits;
     while (bits > 0) {
         // start bit detection
@@ -341,11 +342,14 @@ void SoftwareSerial::rxBits(const uint32_t & isrCycle) {
         }
         // data bits
         if (m_rxCurBit >= -1 && m_rxCurBit < (m_dataBits - 1)) {
-            int8_t dataBits = min(bits, static_cast<uint8_t>(m_dataBits - m_rxCurBit - 1));
+            int16_t dataBits = min(bits, static_cast<uint16_t>(m_dataBits - m_rxCurBit - 1));
             m_rxCurBit += dataBits;
             bits -= dataBits;
             m_rxCurByte >>= dataBits;
-            if (level) { m_rxCurByte |= (BYTE_ALL_BITS_SET << (8 - dataBits)); }
+            if (level) { m_rxCurByte |= (BYTE_ALL_BITS_SET << (16 - dataBits)); }
+            // Serial.println(m_rxCurByte >> 7, HEX);
+            // Serial.println(m_rxCurByte >> (sizeof(uint16_t) * 16 - m_dataBits), HEX);
+
             continue;
         }
         // stop bit
@@ -354,7 +358,8 @@ void SoftwareSerial::rxBits(const uint32_t & isrCycle) {
             // if not high stop bit level, discard word
             if (level)
             {
-                m_buffer->push(m_rxCurByte >> (sizeof(uint8_t) * 8 - m_dataBits));
+                m_buffer->push(m_rxCurByte >> 7);
+                // Serial.println(m_rxCurByte >> 7, HEX);
             }
             ++m_rxCurBit;
             // reset to 0 is important for masked bit logic
