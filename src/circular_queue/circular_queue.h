@@ -250,7 +250,7 @@ bool circular_queue<T>::capacity(const size_t cap)
 }
 
 template< typename T >
-bool IRAM_ATTR circular_queue<T>::push()
+bool circular_queue<T>::push()
 {
     const auto inPos = m_inPos.load(std::memory_order_acquire);
     const unsigned next = (inPos + 1) % m_bufSize;
@@ -265,7 +265,7 @@ bool IRAM_ATTR circular_queue<T>::push()
 }
 
 template< typename T >
-bool IRAM_ATTR circular_queue<T>::push(T&& val)
+bool circular_queue<T>::push(T&& val)
 {
     const auto inPos = m_inPos.load(std::memory_order_acquire);
     const unsigned next = (inPos + 1) % m_bufSize;
